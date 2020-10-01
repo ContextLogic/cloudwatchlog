@@ -3,6 +3,7 @@ import aws
 import metrics
 import argparse
 import logging
+import os
 
 
 SOCKET_RECEIVE_BUFFER_SIZE = 4096
@@ -51,6 +52,11 @@ def main():
     )
     args = parser.parse_args()
 
+    logging.basicConfig(
+        level=os.environ.get("LOGLEVEL", "INFO"),
+        format='[%(asctime)s] [%(levelname)s] %(message)s'
+    )
+
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_address = ('localhost', args.port)
     sock.bind(server_address)
@@ -71,7 +77,6 @@ def main():
                 if raw_data:
                     sent_success = cloudwatchlog.send_data(raw_data, m)
                     if sent_success:
-                        logging.info("Succeed to send data to cloudwatchlog.")
                         m.cloudwatchlog_successed()
                     else:
                         logging.info("Fail to send data to cloudwatchlog.")
