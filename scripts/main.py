@@ -1,18 +1,15 @@
-# stream name?? 2020-09-23
-# instance id?? mongoproxy-bb7c6f859-k8s7t
-# port?? 10000
-# what if the log is not sent to aws cloudwatch? logging
-# Right now mongoproxy send data using syslog format. May need to change it.
-
 import socket
 import aws
+import metrics
 import argparse
 import logging
+import os
 
 
 SOCKET_RECEIVE_BUFFER_SIZE = 4096
 SOCKET_MAX_QUEUED_CONNECTION = 128
 
+# A sidecar that forwards syslog data from a port (default: 10000) to cloduwatch log.
 def main():
     parser = argparse.ArgumentParser(
         description="Cloudwatch logging sidecar. Forward logs to aws cloudwatch."
@@ -24,17 +21,16 @@ def main():
         default=10000,
     )
     parser.add_argument(
-        "--protocol",
-        help="protocol used to receive log",
-        type=str,
-        default="tcp",
+        "--metrics_port",
+        help="port used to export metrics to prometheus",
+        type=int,
+        default=10001,
     )
     parser.add_argument(
         "--log_group",
         help="aws cloudwatch log group",
         type=str,
-        default="mp_auditlog_group",
-        required=True,
+        default="mongoproxy_auditlog",
     )
     parser.add_argument(
         "--region",
@@ -56,12 +52,18 @@ def main():
     )
     args = parser.parse_args()
 
+    logging.basicConfig(
+        level=os.environ.get("LOGLEVEL", "INFO"),
+        format='[%(asctime)s] [%(levelname)s] %(message)s'
+    )
+
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_address = ('localhost', args.port)
     sock.bind(server_address)
     sock.listen(args.max_queue)
 
-    token = ""
+    m = metrics.Metrics(args.metrics_port)
+
     while True: 
         # Establish connection with client. 
         logging.info("Wait for connection")
@@ -69,20 +71,21 @@ def main():
         logging.info("Got connection from:" + str(client_address))
         cloudwatchlog = aws.CloudWatchLog(args.log_group, args.region)
         try:
-            # Receive the data in small chunks and retransmit it
             while True:
+                # Receive data from client
                 raw_data = connection.recv(args.buffer_size)
-                data = raw_data.split(" ")[-1]
-                if data:
-                    token = cloudwatchlog.update_stream_name(token)
-                    if not token:    
-                        token = cloudwatchlog.prepare_send()
-                    token = cloudwatchlog.send_data(token, data)
+                if raw_data:
+                    sent_success = cloudwatchlog.send_data(raw_data, m)
+                    if sent_success:
+                        m.cloudwatchlog_successed()
+                    else:
+                        logging.info("Fail to send data to cloudwatchlog.")
+                        m.cloudwatchlog_failed()
                 else:
-                    logging.error("Don't receive data from client.")
+                    # disconnect from client
                     break
         except Exception as e:
-            logging.error(str(e))
+            logging.exception('Fail to send log to aws cloudwatch. ' + str(e))
         finally:
             logging.info("tcp connection closed.")
             # Clean up the connection
