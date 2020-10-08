@@ -30,7 +30,7 @@ def main():
         "--log_group",
         help="aws cloudwatch log group",
         type=str,
-        default="mp_auditlog_group",
+        default="mongoproxy_auditlog",
     )
     parser.add_argument(
         "--region",
