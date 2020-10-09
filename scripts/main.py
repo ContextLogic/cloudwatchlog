@@ -9,8 +9,11 @@ import os
 SOCKET_RECEIVE_BUFFER_SIZE = 4096
 SOCKET_MAX_QUEUED_CONNECTION = 128
 
-# A sidecar that forwards syslog data from a port (default: 10000) to cloduwatch log.
+
 def main():
+    '''
+        A sidecar that forwards syslog data from a port (default: 10000) to cloduwatch log.
+    '''
     parser = argparse.ArgumentParser(
         description="Cloudwatch logging sidecar. Forward logs to aws cloudwatch."
     )
